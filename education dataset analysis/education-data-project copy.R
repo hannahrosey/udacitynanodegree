@@ -1,6 +1,13 @@
+#Assignment for Part 6, Lesson 6, Quiz 16
+#Explore a dataset from GapMinder or of your choosing 
+#Include
+#		1. the variable(s) you investigated, your observations, and any summary statistics
+#       2. snippets of code that created the plots
+#       3. links to the images of your plots
+
 #Data source: DrivenData Boxplots for Education Project, https://www.drivendata.org/competitions/46/box-plots-for-education-reboot/page/86/#labels_list
 #Project Goal: create a multi-class classiciation model to quickly line items in school budgets by category
-#Current Goal: explore and visualize dataset
+#My Goal: explore and visualize dataset
 
 #Read In
 setwd('/Users/hgorman/Desktop/udacity_nanodegree/eda-course-materials/lesson6')
