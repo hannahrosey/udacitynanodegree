@@ -1,0 +1,1 @@
+ggsave(file='compensation spending by student type','jpeg',plot=comp_plots)
