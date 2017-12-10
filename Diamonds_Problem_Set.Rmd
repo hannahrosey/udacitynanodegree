@@ -1,0 +1,304 @@
+---
+title: "Diamonds_Problem_Set"
+output:
+  html_document: default
+  pdf_document: default
+---
+##Problem Set 1 - Exploring 1 Variable
+
+###Exploring Diamond Price Distribution
+```{r, echo=FALSE}
+
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+data(diamonds)
+str(diamonds)
+table(diamonds$color)
+
+p1 <- ggplot(aes(x=diamonds$price),data=diamonds) + geom_histogram() + scale_x_continuous(breaks=seq(0,10000,1000),limits=c(0,10000)) + theme_classic() + xlab('Price') + ylab('Number of Diamonds')
+
+p2 <- ggplot(aes(x=diamonds$price),data=diamonds) + geom_histogram() + scale_x_continuous(breaks=seq(300,1500,100),limits=c(300,1500)) + theme_classic() + xlab('Price') + ylab('Number of Diamonds')
+
+grid.arrange(p1,p2)
+
+length(diamonds$price[diamonds$price<500])
+length(diamonds$price[diamonds$price<250])
+length(diamonds$price[diamonds$price>=15000])
+
+ggsave('diamonds.jpeg')
+
+```
+
+###Exploring Diamond Price Distribution by Cut
+```{r, echo=FALSE}
+
+by(diamonds$price,diamonds$cut,summary,digits = max(getOption('digits')))
+
+ggplot(aes(x=diamonds$price),data=diamonds) + facet_wrap(~cut,scales='free')  + xlab('Price') + ylab('Number of Diamonds') + geom_histogram()
+
+ggsave('diamonds_cut.jpeg')
+```
+
+###Exploring Diamond Price/Carat Distribution by Cut
+````{r, echo=FALSE}
+
+by(log(diamonds$price/diamonds$carat),diamonds$cut,summary,digits = max(getOption('digits')))
+
+ppc <- ggplot(aes(x=diamonds$price/diamonds$carat),data=diamonds) + facet_wrap(~cut,scale='free')  + xlab('Price per Carat') + ylab('Number of Diamonds') + geom_histogram() + theme_classic()
+
+ppc + scale_x_log10() + xlab('Log Price per Carat') 
+````
+
+###Exploring Diamond Price and Price/Carat Distribution by Color
+````{r, echo=FALSE}
+
+by(log(diamonds$price/diamonds$carat),diamonds$color,summary,digits = max(getOption('digits')))
+
+pc <- ggplot(aes(x=diamonds$price),data=diamonds) + facet_wrap(~color,scales='free')  + ylab('Number of Diamonds') + xlab(NULL) + geom_histogram() + theme_classic() + scale_x_log10() + ggtitle('Log Price by Color')
+
+ppcc <- ggplot(aes(x=diamonds$price/diamonds$carat),data=diamonds) + facet_wrap(~color,scales='free')  +  ylab('Number of Diamonds') + xlab(NULL) + geom_histogram() + theme_classic() + scale_x_log10() + ggtitle('Log Price per Carat by Color')
+
+grid.arrange(pc,ppcc,ncol=2)
+
+pb <- ggplot(data = diamonds,aes(x=color,y=log10(price))) + geom_boxplot() + theme_classic() + ylab('Log Price') + ggtitle('Log Price by Color')
+
+pcb <- ggplot(data = diamonds,aes(x=color,y=log10(price/carat))) + geom_boxplot() + theme_classic() + ylab('Log Price per Carat') + ggtitle('Log Price per Carat by Color')
+
+grid.arrange(pb,pcb,ncol=2)
+
+table(diamonds$color)
+by(diamonds$carat,diamonds$color,mean)
+
+pcbar <- ggplot(data = diamonds,aes(x=color)) + geom_bar() + theme_classic() + ylab('Number of Diamonds') + xlab('Color') + ggtitle('Frequency of Each Color')
+
+diamonds$carat_cat <- cut(diamonds$carat,breaks=c(0,.5,1,1.5,2,2.5,3,6))
+
+ccbar <- ggplot(data = diamonds,aes(x=carat_cat)) + geom_bar() + theme_classic() + ylab('Number of Diamonds') + xlab('Number of Carats') + ggtitle('Frequency of Carat Categories')
+
+table(diamonds$carat_cat,diamonds$color)
+nrow(subset(diamonds,diamonds$carat<2))/nrow(diamonds)*100
+#96% of diamonds have fewer than 2 carats, so we'll get good results looking only at these diamonds
+
+nrow(subset(diamonds,diamonds$color=='D'))
+D_diamonds <- subset(diamonds,diamonds$color=='D')
+table(D_diamonds$carat_cat)
+#D diamonds are uncommon, but seem to be distributed across the carat categories in a similar way to the dataset overall--this isn't the source of the skew
+
+high_carat_diamonds <- (subset(diamonds,diamonds$carat>2))
+table(high_carat_diamonds$color)
+
+color_cat <- ggplot(data = subset(diamonds,diamonds$carat<2),aes(x=color,y=log10(price))) + facet_wrap(~carat_cat) + geom_boxplot() + theme_minimal() + ylab('Log Price') + ggtitle('Log Price by Color and Number of Carats') + xlab(NULL)
+
+ggsave('price_by_color_and_carats.jpeg')
+
+````
+
+###Interquartile range
+```{r,echo=FALSE}
+
+quantile(subset(diamonds,diamonds$color=='D')$price,seq(0,1,.25))
+quantile(subset(diamonds,diamonds$color=='J')$price,seq(0,1,.25))
+IQR(subset(diamonds,diamonds$color=='D')$price)
+IQR(subset(diamonds,diamonds$color=='J')$price)
+
+```
+
+###Price per carat by color boxplot
+```{r,echo=FALSE}
+color_box <- ggplot(data = diamonds,aes(x=color,y=price/carat)) + geom_boxplot() + theme_minimal() + ylab('Price per Carat') + ggtitle('Price per Carat by Color') + xlab(NULL)
+
+ggsave('ppc_by_color.jpeg')
+```
+
+###Weight distribution
+```{r,echo=FALSE}
+
+f_carat <- ggplot(aes(x=carat),data=diamonds) + xlab('Number of Carats') + ylab('Count of Diamonds') + scale_x_continuous(breaks=seq(0,3,.1),limits=c(0,2)) + scale_y_continuous(breaks=seq(0,10000,1000)) + geom_freqpoly() + theme_classic()
+
+
+```
+
+
+
+##Problem Set 2 - Exploring 2 Variables
+###Price and Volume
+```{r,echo=FALSE}
+
+#price vs. x, y, and z
+price_v_x <- ggplot(data=diamonds,aes(x=x,y=price)) + 
+  scale_x_continuous(breaks=seq(0,15,1)) +
+  geom_point(position=position_jitter()) +
+  ggtitle('price and x') +
+  geom_smooth() +
+  theme_classic()
+
+standardized_price <- with(diamonds,price/sd(price))
+sprice <- qplot(standardized_price) + theme_classic()
+standardized_x <- with(diamonds,x/sd(x))
+sx <- qplot(standardized_x) + theme_classic()
+standardized <- grid.arrange(sprice,sx,ncol=2)
+
+grid.arrange(price_v_x,standardized,nrow=2)
+
+cor(diamonds$x,diamonds$price)
+cor(diamonds$y,diamonds$price)
+cor(diamonds$z,diamonds$price)
+
+#price vs. x, y, and z
+# install.packages('corrplot')
+# library(corrplot)
+# D <- cor(diamonds[,-(2:4)])
+# corrplot(D,'circle','lower')
+
+price_v_depth <- ggplot(data=diamonds,aes(x=depth,y=price)) + 
+  geom_point(position=position_jitter(),alpha=1/100) +
+  ggtitle('price and depth') +
+  scale_x_continuous(breaks=seq(0,max(diamonds$depth),2)) +
+  theme_classic()
+
+price_v_depth
+quantile(diamonds$depth)
+cor(diamonds$depth,diamonds$price)
+
+ggplot(data=subset(diamonds,diamonds$price<quantile(diamonds$price,.99)),
+       aes(x=carat,y=price)) +
+  geom_point(alpha=1/15,position=position_jitter()) +
+  scale_x_continuous(breaks=seq(0,5,.5))
+
+#price vs volume
+diamonds$volume <- with(diamonds,x*y*z)
+
+ggplot(data=diamonds,
+       aes(x=volume,y=price)) +
+  geom_point()
+
+diamonds_no_outliers <- subset(diamonds,
+                               diamonds$volume>0&
+                                 diamonds$volume<=800&
+                                 diamonds$price>0)
+
+cor(diamonds_no_outliers$price,diamonds_no_outliers$volume)
+
+ggplot(data=diamonds_no_outliers,
+       aes(x=volume,y=price)) +
+  geom_point(alpha=1/25) +
+  scale_y_log10() +
+  geom_smooth(formula=log10(y)~x,colour='red') +
+  coord_trans(limx=c(0,500)) +
+  ggtitle('volume and log of price') +
+  theme_bw()
+  
+#New dataframe: diamonds by clarity
+
+diamonds_no_outliers %>% group_by(carat) %>% summarise(mean_price = mean(price), median_price = median(price), min_price = min(price), max_price = max(price), n())
+
+  #tangent: practice creating a matrix of values for a given mean, median combination to easily plot different summary stats
+  diamonds_melted <- diamonds_no_outliers %>% group_by(carat) %>% summarise(mean_price = mean(price), median_price = median(price), min_price = min(price), max_price = max(price), n = n()) %>% gather('metric','value',c('mean_price','median_price'))
+
+  diamonds_mean_median <- ggplot(data=diamonds_melted,aes(x=carat,y=metric)) + geom_line(aes(x=carat,y=value,colour=metric)) + ylab('price')
+
+```
+
+```{r,echo=FALSE}
+
+library(dplyr)
+
+diamonds_by_clarity <- group_by(diamonds, clarity)
+diamonds_mp_by_clarity <- summarise(diamonds_by_clarity, mean_price = mean(price))
+
+diamonds_by_color <- group_by(diamonds, color)
+diamonds_mp_by_color <- summarise(diamonds_by_color, mean_price = mean(price))
+
+diamonds_mp_by_cut <- diamonds %>% group_by(cut) %>% summarise(mean_price = mean(price))
+
+clar <- ggplot(diamonds_mp_by_clarity,aes(x=clarity,y=mean_price)) +
+  geom_bar(stat='identity') +
+  ylab('mean price') +
+  theme_bw()
+
+col <- ggplot(diamonds_mp_by_color,aes(x=color,y=mean_price)) +
+  geom_bar(stat='identity') +
+  ylab('mean price') +
+  theme_bw()
+
+cut <- ggplot(diamonds_mp_by_cut,aes(x=cut,y=mean_price)) +
+  geom_bar(stat='identity') +
+  ylab('mean price') +
+  theme_bw()
+
+ggsave(plot=grid.arrange(clar,col,cut),file='diamond price by color, clarity, and cut','jpeg')
+
+grid.arrange(clar,col,cut)
+
+```
+
+
+
+
+##Problem Set 3 - Exploring 3 Variables
+
+###Price by Color and Cut
+```{r,echo=FALSE}
+
+ggplot(data=diamonds,aes(x=price)) +
+  geom_histogram(aes(fill=cut),binwidth=.1) +
+  scale_x_log10() +
+  facet_wrap(~color,scales='free') +
+  theme_minimal() +
+  scale_fill_brewer(palette='PuBuGn') +
+  ylab('frequency') +
+  ggtitle('log diamond price by cut and clarity')
+
+```
+
+###Price by Table and Cut
+```{r,echo=FALSE}
+
+plot <- ggplot(data=diamonds,aes(x=table,y=price)) +
+  geom_point(aes(colour=cut),position=position_jitter(),alpha=1/15) +
+  theme_minimal() +
+  guides(colour = guide_legend(override.aes = list(alpha=1))) +
+  ggtitle('diamond price by table and cut') +
+  scale_x_continuous(breaks=seq(0,100,2)) +
+  coord_trans(limx=c(40,80))
+
+plot
+by(diamonds$table,diamonds$cut,summary)
+
+
+```
+
+###Price by Volume and Clarity
+```{r,echo=FALSE}
+
+ggplot(data=subset(diamonds,volume>0&volume<quantile(diamonds$volume,.99)),aes(x=volume,y=price,colour=clarity)) +
+  geom_point(alpha=1/20) +
+  scale_y_log10() +
+  guides(colour=guide_legend(override.aes = list(alpha=1))) +
+  theme_minimal() +
+  scale_colour_brewer(palette='PuBuGn') +
+  ggtitle('Log Price vs. Volume and Clarity')
+
+```
+
+###Price by Volume and Clarity
+
+Create a scatter plot of the price/carat ratio of diamonds. 
+The variable x should be assigned to cut. The points should be colored
+by diamond color, and the plot should be faceted by clarity.
+
+```{r,echo=FALSE}
+
+ggplot(data=diamonds,aes(x=cut,y=price/carat,colour=color)) +
+  geom_point(alpha=1/10,position=position_jitter()) +
+  facet_wrap(~clarity) +
+  guides(colour=guide_legend(override.aes = list(alpha=1))) +
+  scale_colour_brewer(palette='BuGn') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=90))
+
+```
+
+
