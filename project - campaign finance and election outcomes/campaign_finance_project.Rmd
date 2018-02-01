@@ -1,7 +1,7 @@
 ---
-title: "exploratory data analysis project - campaign finance"
+title: "Exploratory Data Analysis Project - Campaign Finance"
 author: "Hannah Gorman"
-date: "January 22, 2018"
+date: "January 23, 2018"
 output: html_document
 ---
 
@@ -18,38 +18,29 @@ library('gridExtra')
 
 In this project for the Udacity data analysis nanodegree, I'm going to explore 
 the influence of campaign contributions on 2014 congressional election outcomes. 
-The data on campaign contributions is from the federal elections commission. 
 
-I will use three primary measures of campaign finance: dollars per campaign, 
-average campaign contribution size, and % of opponent spend.
+Both the campaign contribution and election outcome datasets are from 
+the federal elections commission. To prepare the datasets, I downloaded the FEC
+data and cleaned it using Python. Cleaning steps included fixing duplicate 
+observations (such as candidates who ran for the same office with different 
+party endorsements), changing datatypes, and limiting both datasets to candidates
+in the 2014 midterms.
 
-Along with win/loss, I will look at vote share as a continuous outcome variable. 
-I will cut the data by candidate party (dem/rep/ind), state, and contributor type 
-(PAC vs. individual) to see if trends in the impact of campaign finance vary 
-based on these election attributes.
+In the campaign finance dataset, `camapign_finance_clean_data.csv`, each row is
+a campaign contribution. In the election outcomes dataset, 
+`election_outcomes_clean_data.csv`, each row is a candidate. I merge them using
+the FEC ID, which includes the state, district, and a unique identifier. As 
+I discuss in the course of analysis, there are issues with missing data in this
+merged dataframe; for much of my analysis, I use only the campaign finance dataset
+as a workaround.
 
-### Tasks
-
-  * Visualize $ contributed
-      * histogram of dollars/campaign colored by dem/rep/ind
-      * boxplot of dollars/campaign by state
-  * Visualize dollars contributed by win/loss
-      * scatterplot of vote share vs. dollars
-        ** add win/loss line
-        ** color dem/rep/ind
-        ** facetwrap by state
-      * scatterplot of vote share vs. average contribution size
-        * add win/loss line
-        * color dem/rep/ind
-        * facetwrap by state
-        * facetwrap by contributor type
-
-## Read In and Data Preparation
-```{r, echo=FALSE}
+## Read In, Data Preparation, and Univariate Analysis
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 finance <- read.csv('campaign_finance_clean_data.csv')
 finance <- finance[!names(finance) %in% 'X']
 str(finance)
 finance$TRANSACTION_DATE <- as.Date(finance$TRANSACTION_DATE,format='%Y-%m-%d')
+finance$CAND_CHAMBER <- substr(finance$CAND_ID,1,1)
 
 outcomes <- read.csv('election_outcomes_clean_data.csv')
 outcomes <- outcomes[!names(outcomes) %in% 'X']
@@ -60,14 +51,15 @@ overlap <- intersect(finance$CAND_ID,outcomes$CAND_ID)
 
 The two datasets overlap for ```r length(overlap)``` candidates.
 
-```{r,echo=FALSE}
+```{r,echo=TRUE}
 
     # clean finance and outcome data available for 265 candidates from 2014 
     # midterm elections
 
 finance_agg <- 
   finance %>% 
-  group_by(CAND_ID,CAND_NAME,CAND_PARTY,CAND_STATE,CAND_DISTRICT,CAND_RACE_STATUS) %>% 
+  group_by(CAND_ID,CAND_NAME,CAND_PARTY,CAND_STATE,CAND_DISTRICT,CAND_RACE_STATUS,
+           CAND_CHAMBER) %>% 
   summarise(TOTAL_CONTRIBUTIONS = sum(TRANSACTION_AMOUNT),
             MEAN_CONTRIBUTION_AMOUNT = mean(TRANSACTION_AMOUNT),
             FIRST_CONTRIBUTION = min(TRANSACTION_DATE),
@@ -76,17 +68,85 @@ finance_agg <-
 df = inner_join(finance_agg,outcomes,by=as.character('CAND_ID'))
 df$STATE_DISTRICT <- paste(df$CAND_STATE,'-',df$CAND_DISTRICT,sep='')
 
-df$CHAMBER <- substr(df$CAND_ID,1,1)
+tail(df)
+```
 
-tail(finance_agg)
+First, I'll do some histograms of my variables.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+summary(df$CAND_PARTY)
+summary(df$CAND_PARTY)
+summary(df$CAND_RACE_STATUS)
+table(df$CAND_CHAMBER)
+summary(df$TOTAL_CONTRIBUTIONS)
+
+tot_contributions <- ggplot(data=finance_agg,aes(x=TOTAL_CONTRIBUTIONS)) +
+  geom_histogram(binwidth=.2) +
+  theme_classic() +
+  scale_x_log10()
+
+tot_contributions
 
 ```
 
-### Wins and Losses by Party
-```{r, echo=FALSE}
+Total contributions seem to be relatively normally distributed around $100,000,
+with a spike around $10,000, too. This is surprising--I know most campaigns spend
+in the millions. This suggests that this data is incomplete, or only a subset of
+contributions--something to keep in mind.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+summary(finance_agg$MEAN_CONTRIBUTION_AMOUNT)
+
+mean_contributions <- ggplot(data=finance_agg,aes(x=MEAN_CONTRIBUTION_AMOUNT)) +
+  geom_histogram() +
+  theme_classic() +
+  scale_x_log10()
+
+mean_contributions
+
+```
+
+Again, mean contributions seem to be relatively normally distributed around
+\$1,000, with a far outlier above \$100,000.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+summary(finance_agg$FIRST_CONTRIBUTION)
+
+first_contribution <- ggplot(data=finance_agg,aes(x=FIRST_CONTRIBUTION)) +
+  geom_histogram() +
+  theme_classic()
+
+first_contribution
+
+```
+
+The date of first contribution is bimodally distributed, with a peak early in
+2013 and a second peak right before the election. More contributions 
+occur in the year leading up to the election than the year of the election 
+itself, which is somewhat surprising.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+summary(finance_agg$NUMBER_OF_CONTRIBUTIONS)
+
+n_contributions <- ggplot(data=finance_agg,aes(x=NUMBER_OF_CONTRIBUTIONS)) +
+  geom_histogram() +
+  theme_classic() +
+  scale_x_log10()
+
+n_contributions
+```
+
+Number of contributions is normally distributed around \$1,000, with a big spike
+at 1 contribution.
+
+### Bivariate Analysis: Wins and Losses by Party
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 party_hist <- ggplot(data=df,aes(x=VOTESHARE,fill=CAND_PARTY)) + 
   geom_histogram(binwidth=5) + 
-  scale_fill_brewer(type='qual',palette='Spectral',direction=-1) +
+  scale_fill_brewer(type='qual',palette='Dark2',direction=-1) +
   geom_vline(xintercept=50,size=.2) +
   theme_classic() +
   xlab('Voteshare') +
@@ -114,7 +174,7 @@ candidate_status
 Let's also break things out by state in cases where a state has a significant 
 number of races, e.g. 10 or more.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 many_race_states = subset(
   as.data.frame(sort(table(df$CAND_STATE),decreasing=TRUE)),
   Freq>10)
@@ -133,21 +193,23 @@ candidate_state <-
 candidate_state
 ```
 
-From this initial visualization, I notice that our dataset is a little unbalanced.
+From this initial visualization, I notice that the dataset I created by merging
+finance and election outcomes data is a little unbalanced.
+
 The dataset includes slightly more data on winning candidates (>50% of voteshare) 
 than on losing candidates (<50% of voteshare). This is likely due to the fact that 
 campaign contribution data was incomplete. Candidates in the outcomes dataset with 
-verysmall (<1%) voteshare were also frequently bundled into the category "Scattered." 
+very small (<1%) voteshare were also frequently bundled into the category "Scattered." 
 This biases both datasets somewhat towards winning candidates; we can also see
 this impact in a boxplot, or when we table our data by chamber and win/loss:
 
 ```{r,echo=TRUE}
-#Table of Chamber of Win/Loss Observations
-table(df$CHAMBER,df$WIN_LOSS)
+#Table of Chamber (House or Senate) vs. Electoral Outcome (0 = loss, 1 = win)
+table(df$CAND_CHAMBER,df$WIN_LOSS)
 
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 candidate_status_box <- ggplot(data=df,aes(y=VOTESHARE,x=CAND_RACE_STATUS)) + 
   geom_boxplot() +
   theme_classic() +
@@ -165,16 +227,12 @@ The approximately normal distribution we see in the above histogram is most like
 due to the data we've chosen. If we had data on more candidates per race, we would 
 likely see much more skewed data, with most candidates falling below 50% voteshare.
 
-Even given this limitation in linking voteshare and contribution data, 
-we can find some interesting patterns.
+Even given this limitation, I notice that incumbency seems to play a big role
+in outcomes. I can examine this trend further by coloring the histogram by 
+win/loss instead of party, since in a race with more than 2 candidates, a 
+voteshare of less than 50% may be sufficient to win:
 
-The candidate status breakout shows us that the mean voteshare for challengers
-is much lower than that for incumbents, while open races (the least common type)
-have a center of about 50%. We can examine this trend further by coloring
-our histogram by win/loss instead of party, since in a race with more than 2 
-candidates, a voteshare of less than 50% may be sufficient to win:
-
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 candidate_status_wl <- ggplot(data=df,aes(x=VOTESHARE,fill=as.factor(WIN_LOSS))) + 
   geom_histogram(binwidth=1) + 
@@ -195,32 +253,24 @@ The contribution dataset can shed light on the material differences between thes
 types of candidates.
 
 This prompts some questions, which we can answer using the aggreggated
-finance dataset:
-
-  * Do incumbents receive larger contributions, or more contributions, or 
-  contributions earlier in the cycle due to their name recognition? 
-  * Within the group of winning incumbents, do factors like state, party, and 
-  chamber have an impact on candidates' voteshare? 
-  *E.g., do incumbent republicans win by more than incumbent democrats? Vis versa?*
-  * What outliers do we see--incumbents who lost, or challengers who won? 
-  Can we learn more about these candidates' circumstances or strategies?
+finance dataset.
   
-## Incumbents vs. Challengers
+## Bivariate Analysis: Incumbents vs. Challengers
 
 ### Contribution Patterns
 
-#### Do incumbents receive larger contributions?
+#### Do incumbents raise more money?
 
 A first intuition about the differences between incumbents and challengers is 
-that incumbents raise significantly more overall than challengers. We can start 
+that incumbents may raise more money overall than challengers. We can start 
 by looking at patterns in the sum of all contributions in the campaign finance
 dataset:
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 contribution_hist <- ggplot(data=finance_agg,aes(x=TOTAL_CONTRIBUTIONS,fill=CAND_RACE_STATUS)) +
   geom_histogram(binwidth=.25) +
-  scale_fill_brewer(palette='Spectral') +
+  scale_fill_brewer(palette='Dark2') +
   theme_classic() +
   ylab('Candidates (#)') +
   xlab('Log of Total Contributions ($)') +
@@ -240,25 +290,20 @@ grid.arrange(contribution_hist,contribution_box,nrow=2)
 These plots support the hypothesis that incumbents receive more contributions
 overall by several orders of magnitude: the median aggregate contributions to
 challenger candidates is around $1,000 (with a big spread) compared to a median 
-of $100,000 for incumbent candidates. 
+of $100,000 for incumbent candidates.
 
-Interestingly, the median contribution for open races is closer to that of 
-incumbents. This suggests that it might not just be that incumbents have an edge
-in fundraising, but that they specifically deter people from giving to challengers. 
+This leads to a question of why incumbents raise more: do they get more 
+contributions, bigger contributions, or both?
 
-This could also be an effect of districts that consistently favor a certain party, 
-since most commonly a challenger is from a different party than the incumbent.
+### Do incumbents receive larger contributions?
 
-### Do incumbents receive more contributions?
+We can check out the size of the **mean** contribution candidates received:
 
-We can also check out the size of the **mean** contribution candidates received.
-This may shed light on what kinds of donors lead to this big fundraising advantage
-for incumbents:
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 contribution_mean_hist <- ggplot(data=finance_agg,aes(x=MEAN_CONTRIBUTION_AMOUNT,fill=CAND_RACE_STATUS)) +
   geom_histogram(binwidth=.075) +
-  scale_fill_brewer(palette='Spectral') +
+  scale_fill_brewer(palette='Dark2') +
   theme_classic() +
   ylab('Candidates (#)') +
   xlab('Log of Mean Contributions ($)') +
@@ -279,8 +324,14 @@ These plots show us that the type of race a candidate runs doesn't seem to
 determine how big their average campaign contribution is. This may have to do
 with the underlying data: while cleaning the campaign finance dataset, I 
 observed that entities frequently 'batched' many small contributions (e.g., 40
-contributions of 500 dollars each instead of giving 20k). We can manipulate the 
-dataset in order to compare:
+contributions of 500 dollars each instead of giving 20k). 
+
+By going back to the original finance dataset and aggregating by committee as 
+well as candidate, we can get rid of this "batched" effect and see what a 
+committee's mean overall contribution was to incumbents vs. challengers.
+
+Looking at the underlying finance data confirms that the average size of the
+contribution from a single PAC to a candidate does not vary based on incumbency.
 
 ```{r, echo=TRUE}
 
@@ -296,7 +347,7 @@ head(finance_by_committee)
 committee_histogram <- 
   ggplot(data=finance_by_committee,aes(x=COMMITTEE_TOTAL_CONTRIBUTIONS,fill=CAND_RACE_STATUS)) +
   geom_histogram(binwidth=.25) +
-  scale_fill_brewer(palette='Spectral') +
+  scale_fill_brewer(palette='Dark2') +
   theme_classic() +
   ylab('Candidates (#)') +
   xlab('Log of Total Contributions ($)') +
@@ -314,18 +365,17 @@ grid.arrange(committee_histogram,committee_box,nrow=2)
 
 ```
 
-Looking at the underlying finance data confirms that while there are many *more*
-transactions from PACs to incumbents than open race candidates and 
-especially than challengers, how much they give a candidate whom they do support
-does not vary based on incumbency.
-
-### Do incumbents receive contributions earlier?
+### Do incumbents receive more contributions?
 
 Since the number rather than the size of contributions seems to matter,
 we can further quantify the difference in the **number of contributions** a 
 candidate receives based on incumbancy status.
 
-```{r, echo=FALSE}
+The histogram and summary of contributions by race type suggest that an incumbent
+gets 5 times as many contributions as a challenger and 3-4 times as many times as
+a candidate in an open race.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 n_contributions_hist <- 
   ggplot(data=finance_agg,aes(color=CAND_RACE_STATUS,x=NUMBER_OF_CONTRIBUTIONS)) +
@@ -341,16 +391,13 @@ by(finance_agg$NUMBER_OF_CONTRIBUTIONS,finance_agg$CAND_RACE_STATUS,summary)
 
 ```
 
-The histogram and summary of contributions by race type suggest that an incumbent
-gets 5 times as many contributions as a challenger and 3-4 times as many times as
-a candidate in an open race. 
-
 #### Do incumbents receive contributions earlier in the cycle?
+
 Another possible source of incumbent advantage may be that funders identify the
 candidate earlier in the race than a challenger. If this is the case, it could
 impact challenger fundraising strategies.
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 first_contribution_hist <- 
   ggplot(data=subset(finance_agg,!is.na(finance_agg$FIRST_CONTRIBUTION)),
@@ -374,11 +421,14 @@ It's also likely that money spent earlier in a campaign is more effective:
 reaching your voter earlier than your competitor through ads, etc. may carry a 
 significant advantage. 
 
+### Multivariate Analysis: 
+### Is there a relationship between timing and size of contributions?
+
 It's even possible that when a PAC contributes influences the size of their gift.
-To do this, I will use the original campaign finance dataset--in which individual 
+To test this, I will use the original campaign finance dataset--in which individual 
 contributions, rather than candidates, were the unit of analysis:
 
-```{r, echo=TRUE}
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
 str(finance)
 
 contribution_size_over_time <- 
@@ -386,7 +436,9 @@ contribution_size_over_time <-
          aes(x=TRANSACTION_DATE,y=TRANSACTION_AMOUNT,color=CAND_RACE_STATUS)) +
   geom_point(position=position_jitter(),alpha=1/2) +
   scale_y_log10() +
-  theme_classic()
+  theme_classic() +
+  xlab('Date of Contribution') +
+  ylab('Contribution Amount ($)')
 
 contribution_size_over_time
 
@@ -398,11 +450,222 @@ the number of contributions increseases (points are denser) and the spread incre
 there are more big contributions, but the biggest increase is in small contributions
 (under $1,000).
 
-We can't tell from this data which kind of late-cycle contribution is better--
-lots of small donations or an equivalent big infusion of cash--but it is clear 
-that challengers and open race contestants are missing out on years of slow and
-steady contributions available to incumbents.
+### Is this pattern the same for senate and house? For Democrats vs. Republicans?
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+
+conb_over_time_chamber <- 
+  ggplot(data=finance,
+         aes(x=TRANSACTION_DATE,y=TRANSACTION_AMOUNT,color=CAND_RACE_STATUS)) +
+  geom_point(position=position_jitter(),alpha=1/2) +
+  scale_y_log10() +
+  theme_classic() +
+  xlab('Date of Contribution') +
+  ylab('Contribution Amount ($)') +
+  facet_wrap(~CAND_CHAMBER)
+
+conb_over_time_party <- 
+  ggplot(data=subset(finance,finance$CAND_PARTY %in% c('REP','DEM')),
+         aes(x=TRANSACTION_DATE,y=TRANSACTION_AMOUNT,color=CAND_RACE_STATUS)) +
+  geom_point(position=position_jitter(),alpha=1/2) +
+  scale_y_log10() +
+  theme_classic() +
+  xlab('Date of Contribution') +
+  ylab('Contribution Amount ($)') +
+  facet_wrap(~CAND_PARTY)
 
 
-### 
-  
+grid.arrange(conb_over_time_chamber,conb_over_time_party,nrow=2)
+
+```
+
+The trend seems quite similar between the house and the senate and Democrats
+and Republicans, with the exception that many more of the 'challenger' 
+contributions were to Republicans vs. Democrats. 
+
+Did this correspond to a greater
+number of Republican challenger candidates, or did Republican challengers get
+more contributions?
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+race_type_by_party <-
+  ggplot(data=subset(finance_agg,finance_agg$CAND_PARTY %in% c('REP','DEM')),
+         aes(x=CAND_RACE_STATUS)) +
+  geom_histogram(stat='count') +
+  theme_classic() +
+  facet_wrap(~CAND_PARTY,scales='free')
+
+contribution_box_by_party <- 
+  ggplot(data=subset(finance_agg,finance_agg$CAND_RACE_STATUS=='C'),
+         aes(x=CAND_PARTY,y=TOTAL_CONTRIBUTIONS)) +
+  geom_boxplot() +
+  theme_classic() +
+  xlab('Party') +
+  ylab('Log of Total Contributions ($)') +
+  scale_y_log10()
+
+grid.arrange(race_type_by_party,contribution_box_by_party,nrow=2)
+
+challengers = subset(finance_agg,finance_agg$CAND_RACE_STATUS=='C')
+by(challengers$TOTAL_CONTRIBUTIONS,challengers$CAND_PARTY,summary)
+
+
+```
+
+The plot and summary of total contributions show that challengers had very different
+fundraising outcomes depending on party. 
+
+We can see how this trend may have impacted some races by pulling in voteshare 
+information for Republican and Democratic challengers. Most of these candidates
+are in the House of Representatives, so I'll limit my plot to these.
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+
+challengers = subset(df,df$CAND_RACE_STATUS=='C'&df$CAND_CHAMBER=='H')
+incumbents = subset(df,df$CAND_RACE_STATUS=='I'&df$CAND_CHAMBER=='H')
+open = subset(df,df$CAND_RACE_STATUS=='I'&df$CAND_CHAMBER=='O')
+
+all_voteshare <- ggplot(data=subset(df,df$CAND_PARTY %in% c('DEM','REP')),
+                                aes(x=TOTAL_CONTRIBUTIONS,y=VOTESHARE,
+                                    color=CAND_PARTY)) +
+  geom_point() +
+  theme_classic() +
+  scale_color_brewer(palette='Dark2',direction=1) +
+  scale_x_log10() +
+  geom_smooth(method='lm') +
+  scale_y_continuous(limits=c(0,75)) +
+  ylab('Voteshare (%)') +
+  xlab('Total Contributions ($)') +
+  ggtitle('All Candidates (House)')
+
+
+incumbents_voteshare <- ggplot(data=subset(incumbents,
+                                           incumbents$CAND_PARTY %in% c('DEM','REP')),
+                                aes(x=TOTAL_CONTRIBUTIONS,y=VOTESHARE,
+                                    color=CAND_PARTY)) +
+  geom_point() +
+  theme_classic() +
+  scale_color_brewer(palette='Dark2',direction=1) +
+  geom_smooth(method='lm') +
+  scale_x_log10() +
+  ylab('Voteshare (%)') +
+  xlab('Total Contributions ($)') +
+  ggtitle('Incumbent Candidates (House)') +
+  coord_cartesian(xlim=c(10000,1000000))
+
+challengers_voteshare <- ggplot(data=subset(challengers,challengers$CAND_PARTY %in% c('DEM','REP')),
+                                aes(x=TOTAL_CONTRIBUTIONS,y=VOTESHARE,
+                                    color=CAND_PARTY)) +
+  geom_point() +
+  theme_classic() +
+  scale_color_brewer(palette='Dark2',direction=1) +
+  scale_x_log10() +
+  geom_smooth(method='lm') +
+  scale_y_continuous(limits=c(0,75)) +
+  ylab('Voteshare (%)') +
+  xlab('Total Contributions ($)') +
+  ggtitle('Challenger Candidates (House)')
+
+big_plot <- grid.arrange(grid.arrange(all_voteshare,incumbents_voteshare,ncol=2),challengers_voteshare,nrow=2)
+```
+
+While this plot shows a strong positive relationship between log of total 
+contributions and voteshare, it also shows that Republican challengers 
+outperformed Democrat challengers with the same amount of fundraising dollars.
+
+## Final Plots and Summary
+
+#### Candidate Status, Party, and Voteshare
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+candidate_status
+```
+
+This plot shows the initial inference that led me to investigate incumbency.
+The distribution of winning and losing voteshares is noticeably different for 
+challengers, incumbents, and open races: challengers have a mean voteshare of
+about 40% (a losing voteshare in most cases), incumbents have a mean voteshare
+of about 60%, and open races are centered at 50%. 
+
+This finding makes sense intuitively: the odds of a candidate who has already won
+winning again seem better than an untested one, and it's also likely that name 
+recognition or loyalty might cause people to vote for a representative again.
+
+At the same time, I wondered if incumbency might have more tangible benefits that
+contribute to this clear divergence in voteshare. Could incumbency actually
+impact elections by affecting how well a candidate can fundraise?
+
+#### Contribution size over time
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+contribution_size_over_time
+```
+
+The plot of log contribution amount over time and incumbency suggests that whether 
+a candidate is running for re-election or as a challenger has a big impact on their
+fundraising. Incumbents receive medium-sized donations for many years compared to
+challengers, who start getting donations in the election year. The biggest 
+contributions still come in close to the election regardless of incumbency, but
+we can imagine that an extra year in which to hire strategists, run polls,
+buy ads and billboards, and so on makes a big difference in campaign success.
+
+But how big a difference does it make? And specifically, among candidates
+who have the same advantage (incumbents) or disadvantage (challengers), how much
+does their fundraising impact their voteshare? For this question, I looked at 
+some candidates about whom I have both finance and voteshare data, specifically
+for candidates for the House of Representatives. 
+
+These plots show some interesting trend. First, looking at all candidates,
+we see a strong trend that more fundraising means more voteshare. We also see
+that Republicans always have an edge in voteshare vs. Democrats. 
+
+But looking at just incumbents, we see tightly clustered data in a band around \
+$100,000. Neither Republicans nor Democrats have an advantage, and what looks 
+like a strong negative relationship seems to be due to outliers. In this limited 
+dataset, raising more or less money than the norm doesn't seem to have a big 
+impact for incumbents. 
+
+In contrast, we see a gentle linear relationship between fundraising and voteshare
+for challengers, as well as a general Republican advantage. Still, those challengers
+who broke 50% voteshare were not those with the highest total contributions.
+
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+plot(big_plot)
+```
+
+All together, these three plots present a highly nuanced relationship between
+incumbency, fundraising, and voteshare. We know that incumbency has a big impact
+on voteshare. But digging into how incumbency affects fundraising, I see a 
+mutlidimensional relationship: wether you're already in office affects how much
+you raise and when you raise it. 
+
+But judging by the different trends in the last
+plot, it also seems like a dollar may mean more to challengers than incumbents.
+An optimistic reading is that an extra TV spot may mean a big bump in votes for
+a relatively unknown challenger, while lots of extra spending won't change voters'
+perception of a candidate who has already done a poor job in office.
+
+We also see that party has a strong impact on voteshare, and specifically that 
+Republicans did better in 2014 than Democrats. This could either suggest a 
+general political move to the right--or that the party out of power has an
+advantage in midterms. This year, we'll get more data to help answer tha question!
+
+## Reflection
+
+I was surprised and excited by the strength of the relationship between
+incumbency and voteshare. This is a political science principal I read in my
+Intro to American Politics textbook--but it's exciting to see it plainly in the
+data, and fun to look for evidence of *how* incumbency helps candidates.
+
+The main challenge in working with this dataset was the quantity of missing data. 
+I was surprised that two datasets from the same source, the FEC, had so little 
+overlap, even after pretty extensive cleaning. I also have doubts about the 
+accuracy of the data--are there really so many candidates for federal office 
+who have raised less than $10,000?
+
+Future work on this data would certainly involve completing this dataset to 
+allow for modeling. With a complete dataset, I would like to look at percent
+of opponent contributions as a variable. After all, if your opponent has only 
+raised \$20,000, it would likely be overkill to raise a million! 
+Looking at candidates' fundraising in relation to their opponent would allow me
+to normalize contribution data and potentially see clearer trends.
